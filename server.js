@@ -10,7 +10,7 @@ app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 //MongoDB Connection and Schema defination
-mongoose.connect('mongodb+srv://sudhaanshu04:kI6Ti0Fk6vKjn72e@labellingui.eprcq.mongodb.net/?retryWrites=true&w=majority&appName=labellingUI');
+mongoose.connect('mongodb+srv://sudhaanshu04:kI6Ti0Fk6vKjn72e@labellingui.eprcq.mongodb.net/?retryWrites=true&w=majority&appName=labellingUI/Labelling-pro');
 
 const licenseSchema = new mongoose.Schema({
     name: String,
