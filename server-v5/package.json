@@ -5,6 +5,8 @@
   "main": "server.js",
   "serve": "nodemon server.js",
   "scripts": {
+    "start": "node server.js",
+    "build": "echo 'No build step needed for backend-only project'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
