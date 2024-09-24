@@ -49,11 +49,33 @@ const annotationSchema = new mongoose.Schema({
     attributes: Object
 });
 
+const trainingSchema=new mongoose.Schema({
+    id: Number,
+    image_id: Number,
+    category_id: Number,
+    segmentation: Array,
+    area: Number,
+    bbox: [Number],
+    attributes: Object
+})
+
+const testingSchema=new mongoose.Schema({
+    id: Number,
+    image_id: Number,
+    category_id: Number,
+    segmentation: Array,
+    area: Number,
+    bbox: [Number],
+    attributes: Object
+})
+
 const License = mongoose.model('License', licenseSchema);
 const Info = mongoose.model('Info', infoSchema);
 const Category = mongoose.model('Category', categorySchema);
 const Image = mongoose.model('Image', imageSchema);
 const Annotation = mongoose.model('Annotation', annotationSchema);
+const Training = mongoose.model('Training', trainingSchema);
+const Testing = mongoose.model('Testing', testingSchema);
 
 const upload = multer({
     limits: { fileSize: 200 * 1024 * 1024 }
@@ -101,7 +123,7 @@ app.get('/data/annotations/category-count', async (req, res) => {
     }
 });
 
-//Download JSON Page
+//Export JSON Page
 
 app.post('/data/annotations/categories', async (req, res) => {
     try {
@@ -331,6 +353,138 @@ const updateInBatches = async (data, model) => {
         }
     }
 };
+
+//Split Data Page requests-----------------------
+
+app.get('/data/count', async (req, res) => {
+    try {
+        const categoryCount = await Category.countDocuments({});
+        const imageCount = await Image.countDocuments({});
+        const annotationCount = await Annotation.countDocuments({});
+
+        res.json({
+            categories: categoryCount,
+            images: imageCount,
+            annotations: annotationCount
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching counts' });
+    }
+});
+
+// POST: Split the data into training and testing
+app.post('/data/split', async (req, res) => {
+    const { trainPercentage, testPercentage } = req.body;
+
+    try {
+        // Fetch all annotations
+        const annotations = await Annotation.find();
+
+        // Shuffle the annotations
+        const shuffledAnnotations = annotations.sort(() => 0.5 - Math.random());
+
+        // Calculate split sizes
+        const totalAnnotations = shuffledAnnotations.length;
+        const trainSize = Math.floor((trainPercentage / 100) * totalAnnotations);
+        const testSize = totalAnnotations - trainSize;
+
+        // Split the data
+        const trainingData = shuffledAnnotations.slice(0, trainSize);
+        const testingData = shuffledAnnotations.slice(trainSize);
+
+        // Insert into training and testing collections
+        await Training.insertMany(trainingData);
+        await Testing.insertMany(testingData);
+
+        res.status(200).json({ message: "Data split successfully", trainSize, testSize });
+    } catch (error) {
+        res.status(500).json({ message: "Error splitting data", error });
+    }
+});
+
+// GET: Fetch training category counts
+app.get('/data/training/category-count', async (req, res) => {
+    try {
+        // Group by category_id and count the occurrences in the Training collection
+        const trainingCounts = await Training.aggregate([
+            { $group: { _id: "$category_id", count: { $sum: 1 } } }
+        ]);
+
+        // Get the category IDs from the trainingCounts
+        const categoryIds = trainingCounts.map(item => item._id);
+
+        // Fetch category names for the corresponding category IDs from the Category collection
+        const categories = await Category.find({ id: { $in: categoryIds } });
+
+        // Map the category_id to its corresponding name
+        const result = trainingCounts.map(countItem => {
+            const category = categories.find(cat => cat.id === countItem._id);
+            return {
+                name: category ? category.name : "Unknown Category",
+                count: countItem.count
+            };
+        });
+
+        res.status(200).json(result);
+    } catch (error) {
+        console.error('Error fetching training category counts:', error);
+        res.status(500).json({ error: 'Error fetching training category counts' });
+    }
+});
+
+// GET: Fetch testing category counts
+app.get('/data/testing/category-count', async (req, res) => {
+    try {
+        // Group by category_id and count the occurrences in the Testing collection
+        const testingCounts = await Testing.aggregate([
+            { $group: { _id: "$category_id", count: { $sum: 1 } } }
+        ]);
+
+        // Get the category IDs from the testingCounts
+        const categoryIds = testingCounts.map(item => item._id);
+
+        // Fetch category names for the corresponding category IDs from the Category collection
+        const categories = await Category.find({ id: { $in: categoryIds } });
+
+        // Map the category_id to its corresponding name
+        const result = testingCounts.map(countItem => {
+            const category = categories.find(cat => cat.id === countItem._id);
+            return {
+                name: category ? category.name : "Unknown Category",
+                count: countItem.count
+            };
+        });
+
+        res.status(200).json(result);
+    } catch (error) {
+        console.error('Error fetching testing category counts:', error);
+        res.status(500).json({ error: 'Error fetching testing category counts' });
+    }
+});
+
+// Route to clear all data from training and testing collections
+app.delete('/data/clear', async (req, res) => {
+    try {
+      // Delete all documents from the training collection
+      await Training.deleteMany({});
+  
+      // Delete all documents from the testing collection
+      await Testing.deleteMany({});
+  
+      // Respond with success message
+      res.status(200).json({
+        message: 'All training and testing data have been deleted successfully.',
+      });
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      res.status(500).json({
+        message: 'Failed to clear training and testing data.',
+        error: error.message,
+      });
+    }
+  });
+
+//------------------------------------------------
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
